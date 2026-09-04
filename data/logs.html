@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECU Chevette - Logs</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html">Monitoramento</a>
+  <a href="config.html">Configuração</a>
+  <a href="logs.html" class="active">Logs</a>
+</nav>
+<main>
+  <h1>Histórico (log em RAM, ~2 minutos)</h1>
+
+  <div class="panel">
+    <canvas id="logCanvas" width="900" height="420"></canvas>
+    <div style="margin-top:10px;">
+      <button onclick="loadLogs()">Atualizar</button>
+      <button class="secondary" onclick="clearLogs()">Limpar log</button>
+      <button class="secondary" onclick="downloadCsv()">Baixar CSV</button>
+    </div>
+    <p class="map-hint">O log fica em RAM e é perdido ao desligar a ECU (não grava na flash pra não desgastá-la). Baixe o CSV se quiser guardar uma sessão.</p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+let lastCsv = '';
+
+function parseCsv(text) {
+  const lines = text.trim().split('\n');
+  lines.shift(); // header
+  const rpm = [], tps = [], adv = [];
+  for (const line of lines) {
+    if (!line) continue;
+    const [t, r, tp, a] = line.split(',');
+    rpm.push(parseFloat(r));
+    tps.push(parseFloat(tp));
+    adv.push(parseFloat(a));
+  }
+  return { rpm, tps, adv };
+}
+
+function loadLogs() {
+  fetch('/api/logs').then(r => r.text()).then(text => {
+    lastCsv = text;
+    const { rpm, tps, adv } = parseCsv(text);
+    const canvas = document.getElementById('logCanvas');
+    drawLineChart(canvas, [
+      { label: 'RPM', data: rpm },
+      { label: 'TPS %', data: tps },
+      { label: 'Ponto °', data: adv }
+    ], ['#ff7a1a', '#3ddc84', '#5fb8ff']);
+  });
+}
+
+function clearLogs() {
+  postJSON('/api/logs/clear', {}).then(loadLogs);
+}
+
+function downloadCsv() {
+  if (!lastCsv) return;
+  const blob = new Blob([lastCsv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'log_ecu.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadLogs();
+setInterval(loadLogs, 3000); // auto-atualiza a cada 3s
+</script>
+</body>
+</html>
