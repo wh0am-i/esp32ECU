@@ -7,15 +7,16 @@
 // ============================================================================
 // ignition.cpp
 //
-// ARQUITETURA DE DISPARO (revisada): em vez de uma task em loop apertado
-// comparando o ângulo do virabrequim a cada iteração ("polling"), usamos 4
-// esp_timer de hardware (ESP_TIMER_ISR) - um para o início do dwell e um para
-// o disparo de cada bobina. A task ignition_task() só roda a cada ~1ms
-// (chamada de esp32_ecu.ino) para calcular, a partir do RPM/TPS atuais, QUANDO
-// (em microssegundos) o próximo evento de cada bobina deve acontecer, e
-// agenda esse instante num esp_timer. O próprio callback do esp_timer é quem
-// liga/desliga o pino da bobina - direto, sem depender do escalonador do
-// FreeRTOS ter chance de rodar a task a tempo.
+// ARQUITETURA DE DISPARO: em vez de uma task em loop apertado comparando o
+// ângulo do virabrequim a cada iteração ("polling"), usamos 4 esp_timer de
+// hardware (modo ESP_TIMER_TASK - ver nota de correção em createIsrTimer)
+// - um para o início do dwell e um para o disparo de cada bobina. A task
+// ignition_task() só roda a cada ~1ms (chamada de esp32ECU.ino) para
+// calcular, a partir do RPM/TPS atuais, QUANDO (em microssegundos) o próximo
+// evento de cada bobina deve acontecer, e agenda esse instante num esp_timer.
+// O próprio callback do esp_timer é quem liga/desliga o pino da bobina -
+// direto, sem depender do escalonador do FreeRTOS ter chance de rodar a task
+// ignition_task() a tempo.
 //
 // Isso resolve duas coisas de uma vez:
 //  1. O core 0 deixa de ficar girando 100% do tempo só comparando ângulo -
@@ -23,10 +24,12 @@
 //     WiFi/rádio (que também usa o core 0 por padrão no Arduino-ESP32) fica
 //     com CPU sobrando de verdade, em vez de brigar por fatias de tempo com
 //     um loop apertado.
-//  2. A precisão do disparo passa a depender só da latência do próprio
-//     esp_timer em modo ISR (tipicamente poucos microssegundos, documentado
-//     pela Espressif), e não da velocidade/carga da task - ou seja, não
-//     degrada se o webserver/logger estiverem ocupados no outro core.
+//  2. A precisão do disparo passa a depender da task interna de alta
+//     prioridade do esp_timer (tipicamente dezenas de microssegundos de
+//     latência - não de "poucos microssegundos" como uma ISR de hardware
+//     pura, que exigiria recompilar o core com sdkconfig customizado), e não
+//     da velocidade/carga da task ignition_task() - ou seja, não degrada se
+//     o webserver/logger estiverem ocupados no outro core.
 //
 // Cada bobina só é reagendada quando o timer dela NÃO está mais pendente
 // (ou seja, logo depois que ela disparou). Isso evita ficar cancelando e
@@ -130,7 +133,21 @@ static esp_timer_handle_t createIsrTimer(esp_timer_cb_t cb, const char *name) {
   esp_timer_create_args_t args = {};
   args.callback = cb;
   args.arg = nullptr;
-  args.dispatch_method = ESP_TIMER_ISR;  // callback roda direto em contexto de ISR
+  // CORREÇÃO: ESP_TIMER_ISR exige CONFIG_ESP_TIMER_SUPPORTS_ISR_DISPATCH
+  // habilitado no sdkconfig do ESP-IDF. O core padrão do Arduino-ESP32 (o
+  // que a Arduino IDE usa) NÃO habilita essa opção, então o firmware
+  // original nem compilava nele - o comentário no topo deste arquivo, que
+  // descrevia "callback roda direto em contexto de ISR", estava descrevendo
+  // uma arquitetura que não é possível fazer funcionar dentro da Arduino IDE
+  // sem recompilar o core inteiro com sdkconfig customizado.
+  // ESP_TIMER_TASK é o modo suportado: o callback roda numa task dedicada e
+  // de alta prioridade do esp_timer, disparada por uma fila interna. Isso
+  // ainda é rápido o suficiente pra ignição (tipicamente dezenas de
+  // microssegundos de latência, não "poucos microssegundos" como uma ISR de
+  // hardware pura), mas deixa de ser IRAM-critical no mesmo sentido: os
+  // callbacks abaixo (onDwellA/onFireA/...) continuam marcados IRAM_ATTR por
+  // segurança, mas rodando em contexto de task, não de interrupção real.
+  args.dispatch_method = ESP_TIMER_TASK;
   args.name = name;
   esp_err_t err = esp_timer_create(&args, &h);
   if (err != ESP_OK) {

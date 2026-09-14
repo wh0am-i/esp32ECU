@@ -1,5 +1,4 @@
 
-Crank · CPP
 #include "crank.h"
 #include "config.h"
  

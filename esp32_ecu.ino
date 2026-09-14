@@ -19,13 +19,22 @@
  *     driver (transistor/MOSTFET + isolamento) discutido anteriormente.
  *
  * BIBLIOTECAS NECESSÁRIAS (Arduino Library Manager):
- *   - ESPAsyncWebServer (me-no-dev / mathieucarbou fork compatível)
- *   - AsyncTCP
- *   - ArduinoJson (v6.x)
+ *   - ESPAsyncWebServer  -> fork ESP32Async/mathieucarbou (github.com/ESP32Async/ESPAsyncWebServer)
+ *                           NÃO usar a versão antiga de me-no-dev nem a de lacamera/ESPHome.
+ *   - AsyncTCP           -> fork ESP32Async/mathieucarbou (github.com/ESP32Async/AsyncTCP) -
+ *                           tem que ser da MESMA família da ESPAsyncWebServer acima, e não
+ *                           pode haver outra versão de AsyncTCP instalada ao mesmo tempo
+ *                           (causa erro de compilação por conflito de símbolos).
+ *   - ArduinoJson (v6.x ou v7.x)
  *   - Adafruit GFX Library
  *   - Adafruit ST7735 and ST7789 Library
  *   - ESP32Servo
  *   - LittleFS (já vem no core ESP32 Arduino >= 2.x)
+ *
+ * FERRAMENTA EXTRA (não é lib do Library Manager): pra enviar a pasta data/ pro
+ * LittleFS na Arduino IDE 2.x, instale a extensão "arduino-littlefs-upload"
+ * (github.com/earlephilhower/arduino-littlefs-upload) - o menu antigo
+ * "ESP32 Sketch Data Upload" só existe na IDE 1.8.x.
  *
  * ANTES DE COMPILAR: faça o upload da pasta data/ para o LittleFS
  * (Ferramentas > ESP32 Sketch Data Upload, ou "pio run -t uploadfs" no

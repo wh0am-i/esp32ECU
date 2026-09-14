@@ -76,16 +76,44 @@ Pino 1 ou 3 da Bobina -------------------------------+---- Coletor (Pull-up 1k p
 ## 4. Instalação e Gravação
 
 ### Bibliotecas Necessárias (Arduino Library Manager)
-1. `ESPAsyncWebServer`
-2. `AsyncTCP`
-3. `ArduinoJson` (v6.x)
-4. `Adafruit GFX Library`
-5. `Adafruit ST7735 and ST7789 Library`
-6. `ESP32Servo`
-7. `LittleFS` (integrado ao core ESP32)
+
+⚠️ **Importante:** para `ESPAsyncWebServer` e `AsyncTCP` existem várias versões/forks
+espalhados pelo Library Manager com o mesmo nome. Usar a combinação errada causa
+erros de compilação (`mbedtls_md5_starts_ret`, `passing 'const AsyncServer' ...
+discards qualifiers`, etc.) mesmo sem nenhum erro no código do projeto em si.
+
+| # | Biblioteca | Fork/autor a usar | Observação |
+|---|---|---|---|
+| 1 | **ESPAsyncWebServer** | `ESP32Async` (mathieucarbou) — github.com/ESP32Async/ESPAsyncWebServer | NÃO usar a versão antiga de `me-no-dev` nem a de `lacamera`/ESPHome — não compilam nos cores ESP32 3.x atuais. |
+| 2 | **AsyncTCP** | `ESP32Async` (mathieucarbou) — github.com/ESP32Async/AsyncTCP | Precisa ser da MESMA família/autor da `ESPAsyncWebServer` acima. Apague qualquer `AsyncTCP` antigo (ex: `me-no-dev`, v1.1.x) da pasta de libraries — ter as duas instaladas ao mesmo tempo causa conflito de símbolos. |
+| 3 | **ArduinoJson** | Benoit Blanchon — v6.x ou v7.x | Qualquer uma das duas funciona com o código deste projeto. |
+| 4 | **Adafruit GFX Library** | Adafruit | — |
+| 5 | **Adafruit ST7735 and ST7789 Library** | Adafruit | Só define as cores `BLACK/WHITE/RED/GREEN/BLUE/CYAN/MAGENTA/YELLOW/ORANGE` — não existe `ST77XX_DARKGREY` nela (isso é de outra lib); o `display.cpp` já define essa cor manualmente. |
+| 6 | **ESP32Servo** | Kevin Harrington / Jim Kim | Usada para o servo do dosador Alpha-N. |
+| 7 | **LittleFS** | integrada ao core ESP32 Arduino ≥ 2.x | Não precisa instalar — já vem com o board package `esp32` da Espressif. |
+
+### Ferramenta extra necessária (não é uma lib do Library Manager)
+
+- **Upload do LittleFS:** na Arduino IDE 2.x, instale a extensão
+  [`arduino-littlefs-upload`](https://github.com/earlephilhower/arduino-littlefs-upload)
+  (arquivo `.vsix` em `~/.arduinoIDE/plugins/`). Sem ela não tem como enviar a pasta
+  `data/` — o antigo menu *Ferramentas → ESP32 Sketch Data Upload* só existe na IDE 1.8.x.
+  Veja a seção 4 abaixo.
 
 ### Passos de Gravação
-1. Abra `esp32_ecu.ino` na Arduino IDE ou PlatformIO.
+1. Abra `esp32ECU.ino` na Arduino IDE ou PlatformIO.
 2. Compile e grave o firmware no ESP32.
-3. Faça o upload dos arquivos da pasta `data/` para a partição **LittleFS** (Ferramentas → *ESP32 Sketch Data Upload*).
+3. Faça o upload dos arquivos da pasta `data/` para a partição **LittleFS**:
+   - **Arduino IDE 1.8.x:** Ferramentas → *ESP32 Sketch Data Upload*.
+   - **Arduino IDE 2.x (a maioria das instalações atuais):** esse menu NÃO existe mais. É
+     preciso instalar a extensão `arduino-littlefs-upload`
+     (https://github.com/earlephilhower/arduino-littlefs-upload/releases, arquivo `.vsix`,
+     colocar em `~/.arduinoIDE/plugins/`, reiniciar a IDE) e então rodar
+     **Ctrl+Shift+P → "Upload LittleFS to Pico/ESP8266/ESP32"**. Confirme também que o
+     *Partition Scheme* selecionado em Ferramentas tem espaço reservado pra sistema de
+     arquivos (ex: algo com "spiffs" no nome) - sem isso o `LittleFS.begin()` falha sempre.
+   - **PlatformIO:** `pio run -t uploadfs`.
+   - Se esse passo não for feito (ou falhar), o webapp abre uma página preta com
+     "Nao encontrado" - o Monitor Serial (115200 baud) mostra
+     `ERRO: falha ao montar LittleFS - faça o upload da pasta data/` nesse caso.
 4. Conecte-se à rede Wi-Fi **`ECU-Chevette`** (senha padrão: `corrida123`) e acesse `http://192.168.4.1` no navegador.

@@ -4,6 +4,13 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 
+// CORREÇÃO: a lib Adafruit_ST7789/Adafruit_ST77xx só define BLACK, WHITE,
+// RED, GREEN, BLUE, CYAN, MAGENTA, YELLOW e ORANGE - não existe
+// ST77XX_DARKGREY (isso é de outra lib, tipo a do ILI9341). Definimos a cor
+// manualmente em RGB565 (mesmo valor usado como "darkgrey" em outras libs
+// Adafruit: 0x7BEF).
+#define COLOR_DARKGREY 0x7BEF
+
 // Antes desta correção, o construtor abaixo era Adafruit_ST7789(CS, DC, RST),
 // que usa o objeto SPI global e o barramento de hardware PADRÃO do ESP32
 // (VSPI: SCK=18, MOSI=23). Isso só "funcionava" porque PIN_TFT_SCK/MOSI em
@@ -159,7 +166,7 @@ void display_update(float tpsPercent, float rpm, float advanceDeg, float tempera
   if (fanActive != lastFan || firstDraw) {
     tft.fillRect(240, 128, 75, 26, ST77XX_BLACK);
     tft.setTextSize(2);
-    tft.setTextColor(fanActive ? ST77XX_GREEN : ST77XX_DARKGREY);
+    tft.setTextColor(fanActive ? ST77XX_GREEN : COLOR_DARKGREY);
     tft.setCursor(240, 130);
     tft.print(fanActive ? "LIG" : "DESL");
     lastFan = fanActive;
