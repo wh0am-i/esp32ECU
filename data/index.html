@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECU Chevette - Monitoramento</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html" class="active">Monitoramento</a>
+  <a href="config.html">Configuração</a>
+  <a href="logs.html">Logs</a>
+</nav>
+<main>
+  <!-- Banner de Alerta Crítico de Superaquecimento -->
+  <div id="overheat-banner" class="alert-banner" style="display:none;">
+    ⚠️ <b>ALERTA DE SUPERAQUECIMENTO:</b> Temperatura da água atingiu <span id="overheat-temp-val">--</span>°C! Ventoinha acionada.
+  </div>
+
+  <!-- Banner de Corte de Giro Máximo -->
+  <div id="revlimit-banner" class="alert-banner warn-banner" style="display:none;">
+    ⚡ <b>CORTE DE GIRO MÁXIMO ATIVO:</b> Rotação atingiu o limite de segurança (<span id="revlimit-rpm-val">--</span> RPM).
+  </div>
+
+  <h1>Monitoramento em tempo real</h1>
+
+  <div class="gauges">
+    <div class="gauge"><div class="value" id="v-rpm">--</div><div class="label">RPM</div></div>
+    <div class="gauge"><div class="value" id="v-tps">--</div><div class="label">TPS %</div></div>
+    <div class="gauge"><div class="value" id="v-adv">--</div><div class="label">Ponto (° BTDC)</div></div>
+    <div class="gauge"><div class="value" id="v-temp" style="color:var(--text);">--</div><div class="label">Temp Motor (°C)</div></div>
+    <div class="gauge"><div class="value" id="v-fan">--</div><div class="label">Ventoinha</div></div>
+    <div class="gauge"><div class="value" id="v-servo">--</div><div class="label">Servo dosador (°)</div></div>
+  </div>
+
+  <div class="status-row">
+    <span class="badge" id="b-sync">sincronismo</span>
+    <span class="badge" id="b-running">motor</span>
+    <span class="badge" id="b-2step-pressed">2-step: botão solto</span>
+    <span class="badge" id="b-2step-cutting">corte 2-step</span>
+    <span class="badge" id="b-revlimit">corte max rpm</span>
+    <span class="badge" id="b-fan">ventoinha</span>
+    <span class="badge" id="b-ign">ignição</span>
+  </div>
+
+  <div class="panel" style="margin-top:20px;">
+    <h2>Ordem de disparo (tempo real)</h2>
+    <div class="firing-order">
+      <div class="cyl-row">
+        <div class="cylinder" id="cyl-1"><span>1</span></div>
+        <div class="cylinder" id="cyl-2"><span>2</span></div>
+        <div class="cylinder" id="cyl-3"><span>3</span></div>
+        <div class="cylinder" id="cyl-4"><span>4</span></div>
+      </div>
+      <div class="coil-row">
+        <div class="coil-brace" id="coilA-brace"><span id="coilA-label">Bobina A (pino 1) - cil. 1+4</span></div>
+        <div class="coil-brace" id="coilB-brace"><span id="coilB-label">Bobina B (pino 3) - cil. 2+3</span></div>
+      </div>
+    </div>
+    <p class="map-hint">
+      Ordem de disparo do motor: <b>1-3-4-2</b> (bobina dupla wasted-spark).
+      Contorno pulsando = bobina em dwell (carregando). Flash = disparo de centelha.
+    </p>
+  </div>
+
+  <div class="panel" style="margin-top:20px;">
+    <h2>Conexão & Status</h2>
+    <p style="color:var(--text-dim); font-size:13px;">
+      Conectado à rede <b id="ssid-hint">ECU-Chevette</b>. A ECU controla ignição, dosador e ventoinha de forma autônoma.
+    </p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+let lastCoilAFireCount = null;
+let lastCoilBFireCount = null;
+
+function flashCylinders(ids) {
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('firing');
+    setTimeout(() => el.classList.remove('firing'), 180);
+  });
+}
+
+connectStatusSocket(function (d) {
+  document.getElementById('v-rpm').textContent = Math.round(d.rpm);
+  document.getElementById('v-tps').textContent = Math.round(d.tps);
+  document.getElementById('v-adv').textContent = d.advance.toFixed(1);
+  document.getElementById('v-servo').textContent = d.servoAngle;
+
+  // Temperatura com alerta de cor
+  const tempEl = document.getElementById('v-temp');
+  tempEl.textContent = d.temp.toFixed(1) + '°';
+  if (d.overheat) {
+    tempEl.style.color = 'var(--danger)';
+  } else if (d.temp >= 90) {
+    tempEl.style.color = 'var(--warn)';
+  } else {
+    tempEl.style.color = 'var(--ok)';
+  }
+
+  // Ventoinha
+  const fanEl = document.getElementById('v-fan');
+  fanEl.textContent = d.fanOn ? 'LIGADA' : 'DESL';
+  fanEl.style.color = d.fanOn ? 'var(--ok)' : 'var(--text-dim)';
+
+  // Banners
+  const ohBanner = document.getElementById('overheat-banner');
+  if (d.overheat) {
+    ohBanner.style.display = 'block';
+    document.getElementById('overheat-temp-val').textContent = d.temp.toFixed(1);
+  } else {
+    ohBanner.style.display = 'none';
+  }
+
+  const rlBanner = document.getElementById('revlimit-banner');
+  if (d.revLimitCutting) {
+    rlBanner.style.display = 'block';
+    document.getElementById('revlimit-rpm-val').textContent = Math.round(d.maxRpm);
+  } else {
+    rlBanner.style.display = 'none';
+  }
+
+  // Badges
+  const sync = document.getElementById('b-sync');
+  sync.textContent = d.synced ? 'Sincronizado' : 'Sem sincronismo';
+  sync.className = 'badge ' + (d.synced ? 'ok' : 'danger');
+
+  const running = document.getElementById('b-running');
+  running.textContent = d.running ? 'Motor girando' : 'Motor parado';
+  running.className = 'badge ' + (d.running ? 'ok' : 'warn');
+
+  // Estado do Botão 2-step (Pressionado / Solto)
+  const twoStepPressed = document.getElementById('b-2step-pressed');
+  if (d.twoStepPressed) {
+    twoStepPressed.textContent = '2-STEP: BOTÃO APERTADO';
+    twoStepPressed.className = 'badge warn-pulse';
+  } else {
+    twoStepPressed.textContent = '2-step: botão solto';
+    twoStepPressed.className = 'badge';
+  }
+
+  // Corte real do 2-step
+  const twoStepCutting = document.getElementById('b-2step-cutting');
+  twoStepCutting.textContent = d.twoStepCutting
+    ? `CORTANDO 2-STEP (${Math.round(d.twoStepRpm)} rpm)`
+    : 'sem corte 2-step';
+  twoStepCutting.className = 'badge ' + (d.twoStepCutting ? 'danger' : '');
+
+  // Corte Máximo de RPM
+  const revLimitBadge = document.getElementById('b-revlimit');
+  revLimitBadge.textContent = d.revLimitCutting
+    ? `CORTE MAX RPM (${Math.round(d.maxRpm)} rpm)`
+    : `Limitador: ${Math.round(d.maxRpm)} rpm`;
+  revLimitBadge.className = 'badge ' + (d.revLimitCutting ? 'danger' : '');
+
+  // Badge Ventoinha
+  const fanBadge = document.getElementById('b-fan');
+  let fanText = d.fanOn ? 'Ventoinha: LIGADA' : 'Ventoinha: desligada';
+  if (d.fanOverride !== -1) fanText += ' (MANUAL)';
+  fanBadge.textContent = fanText;
+  fanBadge.className = 'badge ' + (d.fanOn ? 'ok' : '');
+
+  const ign = document.getElementById('b-ign');
+  ign.textContent = d.ignitionEnabled ? 'Ignição habilitada' : 'IGNIÇÃO DESABILITADA';
+  ign.className = 'badge ' + (d.ignitionEnabled ? '' : 'danger');
+
+  // Disparo de bobinas
+  document.getElementById('coilA-brace').classList.toggle('charging', !!d.coilACharging);
+  document.getElementById('coilB-brace').classList.toggle('charging', !!d.coilBCharging);
+
+  if (lastCoilAFireCount !== null && d.coilAFireCount > lastCoilAFireCount) {
+    flashCylinders(['cyl-1', 'cyl-4']);
+  }
+  if (lastCoilBFireCount !== null && d.coilBFireCount > lastCoilBFireCount) {
+    flashCylinders(['cyl-2', 'cyl-3']);
+  }
+  lastCoilAFireCount = d.coilAFireCount;
+  lastCoilBFireCount = d.coilBFireCount;
+});
+</script>
+</body>
+</html>
