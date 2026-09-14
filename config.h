@@ -7,8 +7,19 @@
 // ============================================================================
 
 // ---------------------------------------------------------------------------
-// PINAGEM (ESP32 DevKit 38 pinos) - evita pinos strapping problemáticos
-// (GPIO0, GPIO12) e pinos input-only (34-39) exceto onde só precisamos ler.
+// PINAGEM (ESP32 DevKit 38 pinos)
+//
+// ATENÇÃO - PINOS DE STRAPPING: evitamos GPIO0 (seleção de boot) e GPIO12
+// (tensão da flash) por serem os mais perigosos de travar o boot. PORÉM o
+// display SPI usa GPIO2 (DC), GPIO5 (CS) e GPIO15 (RST), que TAMBÉM são
+// pinos de strapping do ESP32 (GPIO2 deve estar LOW/flutuante no boot,
+// GPIO5 afeta timing de SDIO, GPIO15 silencia o log de boot se ficar LOW).
+// Na prática costuma funcionar porque o módulo de display normalmente não
+// impõe nenhum nível nesses pinos durante o boot (eles só viram saída depois
+// que o firmware já rodou `pinMode`) - mas se você tiver boot instável /
+// bootloop, o primeiro suspeito é o display puxando um desses pinos para um
+// nível errado durante o power-on. Pinos 34-39 são input-only (sem pull
+// interno) e por isso só são usados para leitura analógica (TPS/CLT).
 // ---------------------------------------------------------------------------
 
 // Sensor de rotação (roda fônica 60-2, sensor HALL 3 fios: VCC/GND/Sinal)
@@ -39,6 +50,13 @@
 #define FAN_ACTIVE_HIGH       true
 
 // Display GMT020-02 (SPI, driver ST7789V, 240x320, 3.3V nativo)
+// IMPORTANTE: SCK/MOSI abaixo são de fato aplicados em display.cpp via um
+// SPIClass próprio (SPI.begin(sck, miso, mosi, cs)). Antes desta correção
+// esses dois defines existiam só como documentação e não tinham efeito
+// nenhum no código (o display usava o barramento VSPI padrão da placa, que
+// por coincidência é SCK=18/MOSI=23) - ou seja, mudar esses números aqui não
+// mudava nada na prática. Agora eles realmente configuram o barramento, então
+// se você mudar esses pinos aqui, o display acompanha.
 #define PIN_TFT_SCK           18
 #define PIN_TFT_MOSI          23
 #define PIN_TFT_CS            5
@@ -53,6 +71,13 @@
 #define WHEEL_TEETH_MISSING   2
 #define DEG_PER_TOOTH         (360.0f / WHEEL_TEETH_TOTAL)  // 6 graus/dente físico da roda
 
+// AVISO: a lógica de disparo em ignition.cpp está *fixa* para exatamente
+// esta configuração (4 cilindros, wasted-spark, 2 bobinas defasadas 180°).
+// Estas duas constantes NÃO parametrizam o firmware sozinhas - existe um
+// static_assert em ignition.cpp que trava a compilação se alguém mudar
+// ENGINE_CYLINDERS ou WASTED_SPARK aqui sem também adaptar o código de
+// disparo. Isso evita a armadilha de "mudei aqui e achei que ia funcionar
+// pra outro motor".
 #define ENGINE_CYLINDERS      4
 #define WASTED_SPARK          true // bobina dupla, não precisa sensor de fase (cam)
 

@@ -4,7 +4,15 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 
-static Adafruit_ST7789 tft = Adafruit_ST7789(PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST);
+// Antes desta correção, o construtor abaixo era Adafruit_ST7789(CS, DC, RST),
+// que usa o objeto SPI global e o barramento de hardware PADRÃO do ESP32
+// (VSPI: SCK=18, MOSI=23). Isso só "funcionava" porque PIN_TFT_SCK/MOSI em
+// config.h coincidiam com esses valores - os defines não tinham efeito real.
+// Agora criamos um SPIClass próprio e chamamos .begin() explicitamente com
+// os pinos de config.h, então esses defines passam a valer de verdade (você
+// pode remapear o barramento SPI só mudando config.h).
+static SPIClass tftSPI(VSPI);
+static Adafruit_ST7789 tft = Adafruit_ST7789(&tftSPI, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST);
 
 // valores anteriores para só redesenhar o que mudou (evita flicker/piscadas)
 static int lastRpm = -1;
@@ -44,6 +52,9 @@ static void drawBaseLayout() {
 void display_init() {
   pinMode(PIN_TFT_BLK, OUTPUT);
   digitalWrite(PIN_TFT_BLK, HIGH); // backlight ligado
+
+  // MISO não é usado pelo display (ele é write-only), passamos -1.
+  tftSPI.begin(PIN_TFT_SCK, -1, PIN_TFT_MOSI, PIN_TFT_CS);
 
   tft.init(240, 320);
   tft.setRotation(1); // paisagem (320x240)

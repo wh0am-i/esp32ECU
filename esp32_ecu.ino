@@ -30,6 +30,15 @@
  * ANTES DE COMPILAR: faça o upload da pasta data/ para o LittleFS
  * (Ferramentas > ESP32 Sketch Data Upload, ou "pio run -t uploadfs" no
  * PlatformIO) - é ela que contém o webapp (HTML/CSS/JS).
+ *
+ * CORREÇÃO NESTA VERSÃO: o arquivo principal foi renomeado de
+ * "esp32_ecu.ino" para "esp32ECU.ino" para bater com o nome da pasta do
+ * projeto/repositório ("esp32ECU"). A Arduino IDE exige que o nome do
+ * arquivo .ino principal seja IGUAL ao nome da pasta que o contém; com o
+ * nome antigo, ao abrir o sketch a IDE detectava a divergência e oferecia
+ * pra mover o sketch pra uma pasta nova "esp32_ecu" - fácil de confundir
+ * achando que algo deu errado. Se você já tinha clonado a versão antiga,
+ * ou renomeie a pasta local para "esp32_ecu", ou use esta versão corrigida.
  * ============================================================================
  */
 

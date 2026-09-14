@@ -15,7 +15,6 @@ static Preferences prefs;
 #define NS_FUEL    "ecu_fuel"
 #define NS_CRANK   "ecu_crank"
 #define NS_THERMAL "ecu_therm"
-#define NS_WIFI    "ecu_wifi"
 
 void storage_init() {
   storage_loadAll();
@@ -115,9 +114,12 @@ void storage_saveCrankCalibration() {
   prefs.end();
 }
 
-void storage_saveWifiConfig() {
-  prefs.begin(NS_WIFI, false);
-  prefs.putString("ssid", WIFI_AP_SSID);
-  prefs.putString("pass", WIFI_AP_PASSWORD);
-  prefs.end();
-}
+// storage_saveWifiConfig() foi REMOVIDA nesta correção: ela nunca era chamada
+// em lugar nenhum do firmware, e mesmo se fosse, só regravava os #define
+// fixos WIFI_AP_SSID/WIFI_AP_PASSWORD (não uma credencial editável) - ou
+// seja, era código morto que sugeria uma funcionalidade ("trocar Wi-Fi pelo
+// app") que não existe. O SSID/senha do Access Point são e continuam sendo
+// definidos em tempo de compilação em config.h (WIFI_AP_SSID / WIFI_AP_PASSWORD).
+// Se quiser essa configuração editável de fato, é necessário: 1) ler/gravar
+// nas chaves NS_WIFI em storage_loadAll()/aqui, e 2) usar as variáveis
+// carregadas (em vez das macros) em webserver_init() no WiFi.softAP(...).

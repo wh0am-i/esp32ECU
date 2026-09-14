@@ -36,6 +36,18 @@
 // continuamente no meio dele.
 // ============================================================================
 
+// CORREÇÃO: ENGINE_CYLINDERS e WASTED_SPARK em config.h eram usados só como
+// documentação - a lógica abaixo (2 bobinas, wasted-spark, defasagem fixa de
+// 180°) está hardcoded e ignorava totalmente essas constantes. Este
+// static_assert garante que, se alguém mudar esses defines em config.h sem
+// também adaptar o código de disparo (mais bobinas/cilindros, sensor de
+// fase, etc.), a compilação falha em vez de silenciosamente gerar um
+// firmware incoerente com a configuração declarada.
+static_assert(ENGINE_CYLINDERS == 4 && WASTED_SPARK == true,
+  "ignition.cpp so implementa disparo wasted-spark de 2 bobinas para motor "
+  "4 cilindros. Mudar ENGINE_CYLINDERS/WASTED_SPARK em config.h exige "
+  "reescrever a logica de agendamento em ignition_task().");
+
 IgnitionMap ignMap;
 IgnitionConfig ignConfig;
 

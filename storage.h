@@ -19,4 +19,6 @@ void storage_saveIgnitionConfig();
 void storage_saveFuelingConfig();
 void storage_saveCrankCalibration();
 void storage_saveThermalConfig();
-void storage_saveWifiConfig();
+// storage_saveWifiConfig() foi removida - era código morto (nunca chamada e
+// não persistia credencial nenhuma de fato). SSID/senha do AP continuam
+// fixos em config.h (WIFI_AP_SSID / WIFI_AP_PASSWORD).
