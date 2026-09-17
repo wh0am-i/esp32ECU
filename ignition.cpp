@@ -109,11 +109,21 @@ static void killAllOutputs() {
   coilBEnergized = false;
 }
 
-void ignition_loadDefaults() {
-  // eixos padrão: RPM de 500 a 7500, TPS de 0 a 100%
+// Recalcula só o eixo de RPM do mapa (500rpm fixo até ignConfig.maxRpm),
+// SEM mexer na tabela de avanço já calibrada. Chamar sempre que maxRpm
+// mudar (boot com valor salvo, ou alteração via webapp) para o mapa nunca
+// ficar com colunas acima do corte de giro configurado.
+void ignition_rebuildRpmAxis() {
+  float rpmMax = ignConfig.maxRpm > 500.0f ? ignConfig.maxRpm : 500.0f + 1.0f;
   for (int i = 0; i < IGN_MAP_RPM_BINS; i++) {
-    ignMap.rpmAxis[i] = 500.0f + i * ((7500.0f - 500.0f) / (IGN_MAP_RPM_BINS - 1));
+    ignMap.rpmAxis[i] = 500.0f + i * ((rpmMax - 500.0f) / (IGN_MAP_RPM_BINS - 1));
   }
+}
+
+void ignition_loadDefaults() {
+  // eixo de RPM: 500rpm (fixo) até o RPM máximo configurado (ignConfig.maxRpm)
+  ignition_rebuildRpmAxis();
+  // eixo de TPS: 0 a 100%
   for (int j = 0; j < IGN_MAP_TPS_BINS; j++) {
     ignMap.tpsAxis[j] = j * (100.0f / (IGN_MAP_TPS_BINS - 1));
   }
@@ -121,7 +131,7 @@ void ignition_loadDefaults() {
   // mais avanço em carga baixa/RPM médio. AJUSTE ISSO NO BANCO/DINAMÔMETRO.
   for (int j = 0; j < IGN_MAP_TPS_BINS; j++) {
     for (int i = 0; i < IGN_MAP_RPM_BINS; i++) {
-      float base = 10.0f + (ignMap.rpmAxis[i] / 7500.0f) * 20.0f;   // 10-30 graus
+      float base = 10.0f + (ignMap.rpmAxis[i] / ignConfig.maxRpm) * 20.0f;   // 10-30 graus
       float loadCorrection = (100.0f - ignMap.tpsAxis[j]) / 100.0f * 8.0f; // até +8 graus em carga baixa
       ignMap.advance[j][i] = base + loadCorrection;
     }
@@ -167,7 +177,12 @@ void ignition_init() {
   timerDwellB = createIsrTimer(&onDwellB, "ign_dwellB");
   timerFireB  = createIsrTimer(&onFireB,  "ign_fireB");
 
-  ignition_loadDefaults();
+  // NÃO chamar ignition_loadDefaults() aqui: storage_init() (chamado ANTES
+  // de ignition_init() em esp32_ecu.ino) já carrega o mapa salvo na flash,
+  // ou aplica os defaults sozinho se não houver mapa salvo ainda. Chamar
+  // de novo aqui sobrescrevia SEMPRE o mapa (e o eixo de RPM) com os
+  // valores de fábrica a cada boot, mesmo depois de o usuário salvar uma
+  // calibração customizada pelo WebApp - bug corrigido.
 }
 
 static float interpolate1D(float x, const float *axis, int n, int *loIdxOut, float *fracOut) {

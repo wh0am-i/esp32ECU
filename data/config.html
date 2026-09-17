@@ -423,7 +423,12 @@ function saveIgnitionConfig() {
     maxDwellMs: parseFloat(document.getElementById('maxDwellMs').value),
     twoStepRpm: parseFloat(document.getElementById('twoStepRpm').value),
     ignitionEnabled: document.getElementById('ignitionEnabled').checked
-  }).then(() => flashSaved('saved-ign'));
+  }).then(() => {
+    flashSaved('saved-ign');
+    // maxRpm pode ter mudado o eixo de RPM do mapa no backend (ignition_rebuildRpmAxis) -
+    // sem isso, o mapCanvas ficava mostrando o eixo antigo em memória até dar F5.
+    loadMap();
+  });
 }
 
 loadMap();

@@ -122,6 +122,17 @@ function drawHeatmap(canvas, rpmAxis, tpsAxis, table, opts) {
     ctx.fillText(Math.round(tpsAxis[rowIdxDraw]) + '%', padLeft - 8, padTop + r * cellH + cellH / 2 + 4);
   }
 
+  // título do eixo TPS (vertical, rotacionado, à esquerda dos valores)
+  ctx.save();
+  ctx.translate(14, padTop + (rows * cellH) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('TPS (%)', 0, 0);
+  ctx.restore();
+
   canvas.onclick = function (evt) {
     const rect = canvas.getBoundingClientRect();
     const x = (evt.clientX - rect.left) * (canvas.width / rect.width);

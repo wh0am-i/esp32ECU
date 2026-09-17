@@ -40,6 +40,7 @@ void ignition_task();                 // chamar periodicamente (~1ms) numa task 
 float ignition_getAdvanceForCurrentConditions(float rpm, float tpsPercent);
 float ignition_lastAppliedAdvance();  // para telemetria/display
 void ignition_loadDefaults();
+void ignition_rebuildRpmAxis(); // recalcula só o eixo de RPM (500 a maxRpm), preserva a tabela de avanço
 
 // --- telemetria para o webapp (ilustração de ordem de disparo em tempo real) ---
 uint32_t ignition_coilAFireCount();   // incrementa a cada centelha do par cil. 1+4

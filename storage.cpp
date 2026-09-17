@@ -41,6 +41,12 @@ void storage_loadAll() {
   ignConfig.ignitionEnabled = prefs.getBool("ignEnabled", true);
   prefs.end();
 
+  // o eixo de RPM do mapa (500rpm a maxRpm) depende do maxRpm que acabou de
+  // ser carregado acima - se o mapa em si já veio salvo da flash (hasMap),
+  // o eixo salvo nele pode estar desatualizado em relação a um maxRpm
+  // diferente salvo depois; refaz o eixo aqui (não mexe na tabela de avanço).
+  ignition_rebuildRpmAxis();
+
   // --- config térmica / ventoinha ---
   prefs.begin(NS_THERMAL, true);
   thermalConfig.fanTargetTemp = prefs.getFloat("fanTarget", thermalConfig.fanTargetTemp);

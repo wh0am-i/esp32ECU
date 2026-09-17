@@ -109,7 +109,10 @@ static void handlePostConfigBody(AsyncWebServerRequest *request, uint8_t *data, 
   if (doc.containsKey("dwellMs")) ignConfig.dwellMs = doc["dwellMs"];
   if (doc.containsKey("maxDwellMs")) ignConfig.maxDwellMs = doc["maxDwellMs"];
   if (doc.containsKey("twoStepRpm")) ignConfig.twoStepRpm = doc["twoStepRpm"];
-  if (doc.containsKey("maxRpm")) ignConfig.maxRpm = doc["maxRpm"];
+  if (doc.containsKey("maxRpm")) {
+    ignConfig.maxRpm = doc["maxRpm"];
+    ignition_rebuildRpmAxis(); // mapa passa a ir de 500rpm até o novo maxRpm imediatamente
+  }
   if (doc.containsKey("ignitionEnabled")) ignConfig.ignitionEnabled = doc["ignitionEnabled"];
   storage_saveIgnitionConfig();
 
