@@ -1,0 +1,6 @@
+__pycache__/
+.simulator-state.json
+.simulator-state.tmp
+.simulator-state.12x8.bak.json
+artifacts/
+.venv

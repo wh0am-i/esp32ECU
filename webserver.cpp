@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <math.h>
 #include "config.h"
 #include "ignition.h"
 #include "fueling.h"
@@ -15,6 +16,38 @@
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 static uint32_t lastWsPush = 0;
+
+// O corpo pode chegar em varios pacotes. O servidor libera _tempObject
+// ao destruir a requisicao, inclusive se o cliente desconectar no meio.
+static bool readJsonBody(AsyncWebServerRequest *request, JsonDocument &doc,
+                         uint8_t *data, size_t len, size_t index, size_t total) {
+  if (!total || total > 16384) {
+    if (!index) request->send(413, "application/json", "{\"error\":\"corpo excede 16 KB\"}");
+    return false;
+  }
+  if (!index) {
+    request->_tempObject = malloc(total);
+    if (!request->_tempObject) {
+      request->send(503, "application/json", "{\"error\":\"sem memoria\"}");
+      return false;
+    }
+  }
+  if (!request->_tempObject) return false;
+  if (index > total || len > total-index) {
+    request->send(400, "application/json", "{\"error\":\"corpo invalido\"}");
+    free(request->_tempObject); request->_tempObject = nullptr;
+    return false;
+  }
+  memcpy(static_cast<uint8_t*>(request->_tempObject)+index, data, len);
+  if (index+len != total) return false;
+  auto err = deserializeJson(doc, static_cast<const char*>(request->_tempObject), total);
+  free(request->_tempObject); request->_tempObject = nullptr;
+  if (err || !doc.is<JsonObject>()) {
+    request->send(400, "application/json", "{\"error\":\"json invalido\"}");
+    return false;
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // /api/status (também espelhado via WebSocket) - dados de monitoramento
@@ -100,18 +133,14 @@ static void handleGetConfig(AsyncWebServerRequest *request) {
 // body handler acumula o corpo do POST (pode vir em vários pacotes)
 static void handlePostConfigBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
   DynamicJsonDocument doc(1024);
-  DeserializationError err = deserializeJson(doc, data, len);
-  if (err) {
-    request->send(400, "application/json", "{\"error\":\"json invalido\"}");
-    return;
-  }
+  if (!readJsonBody(request, doc, data, len, index, total)) return;
 
   if (doc.containsKey("dwellMs")) ignConfig.dwellMs = doc["dwellMs"];
   if (doc.containsKey("maxDwellMs")) ignConfig.maxDwellMs = doc["maxDwellMs"];
   if (doc.containsKey("twoStepRpm")) ignConfig.twoStepRpm = doc["twoStepRpm"];
   if (doc.containsKey("maxRpm")) {
     ignConfig.maxRpm = doc["maxRpm"];
-    ignition_rebuildRpmAxis(); // mapa passa a ir de 500rpm até o novo maxRpm imediatamente
+    // O limitador nao modifica o mapa.
   }
   if (doc.containsKey("ignitionEnabled")) ignConfig.ignitionEnabled = doc["ignitionEnabled"];
   storage_saveIgnitionConfig();
@@ -154,11 +183,7 @@ static void handlePostConfigBody(AsyncWebServerRequest *request, uint8_t *data, 
 // ---------------------------------------------------------------------------
 static void handlePostActuatorTestBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
   DynamicJsonDocument doc(512);
-  DeserializationError err = deserializeJson(doc, data, len);
-  if (err) {
-    request->send(400, "application/json", "{\"error\":\"json invalido\"}");
-    return;
-  }
+  if (!readJsonBody(request, doc, data, len, index, total)) return;
 
   if (doc.containsKey("stop") && doc["stop"].as<bool>()) {
     // Parar todos os testes e retornar ao modo automático imediato
@@ -182,7 +207,7 @@ static void handlePostActuatorTestBody(AsyncWebServerRequest *request, uint8_t *
 // /api/map  GET/POST  - mapa de ignição (heatmap RPM x TPS)
 // ---------------------------------------------------------------------------
 static void handleGetMap(AsyncWebServerRequest *request) {
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(12288);
   JsonArray rpmAxis = doc.createNestedArray("rpmAxis");
   for (int i = 0; i < IGN_MAP_RPM_BINS; i++) rpmAxis.add(ignMap.rpmAxis[i]);
   JsonArray tpsAxis = doc.createNestedArray("tpsAxis");
@@ -198,34 +223,34 @@ static void handleGetMap(AsyncWebServerRequest *request) {
 }
 
 static void handlePostMapBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-  DynamicJsonDocument doc(4096);
-  DeserializationError err = deserializeJson(doc, data, len);
-  if (err) {
-    request->send(400, "application/json", "{\"error\":\"json invalido\"}");
-    return;
-  }
+  DynamicJsonDocument doc(12288);
+  if (!readJsonBody(request, doc, data, len, index, total)) return;
 
-  // aceita ou uma edição de célula única {row, col, value} ou a tabela inteira
-  if (doc.containsKey("row") && doc.containsKey("col") && doc.containsKey("value")) {
-    int row = doc["row"];
-    int col = doc["col"];
-    float value = doc["value"];
-    if (row >= 0 && row < IGN_MAP_TPS_BINS && col >= 0 && col < IGN_MAP_RPM_BINS) {
-      ignMap.advance[row][col] = value;
+  // Valida o corpo inteiro antes de modificar qualquer celula.
+  if (doc.containsKey("table")) {
+    JsonArray table = doc["table"].as<JsonArray>();
+    bool valid = table.size() == IGN_MAP_TPS_BINS;
+    for (JsonVariant rowValue : table) {
+      JsonArray row = rowValue.as<JsonArray>();
+      if (row.size() != IGN_MAP_RPM_BINS) valid = false;
+      for (JsonVariant value : row)
+        if (!value.is<float>() || !isfinite(value.as<float>())) valid = false;
     }
-  } else if (doc.containsKey("table")) {
-    JsonArray table = doc["table"];
-    int j = 0;
-    for (JsonArray row : table) {
-      if (j >= IGN_MAP_TPS_BINS) break;
-      int i = 0;
-      for (JsonVariant v : row) {
-        if (i >= IGN_MAP_RPM_BINS) break;
-        ignMap.advance[j][i] = v.as<float>();
-        i++;
-      }
-      j++;
+    if (!valid) {
+      request->send(400, "application/json", "{\"error\":\"mapa deve conter 16x16 numeros finitos\"}");
+      return;
     }
+    for (int j=0; j<IGN_MAP_TPS_BINS; ++j)
+      for (int i=0; i<IGN_MAP_RPM_BINS; ++i) ignMap.advance[j][i] = table[j][i].as<float>();
+  } else {
+    if (!doc["row"].is<int>() || !doc["col"].is<int>() || !doc["value"].is<float>() ||
+        !isfinite(doc["value"].as<float>()) || doc["row"].as<int>() < 0 ||
+        doc["row"].as<int>() >= IGN_MAP_TPS_BINS || doc["col"].as<int>() < 0 ||
+        doc["col"].as<int>() >= IGN_MAP_RPM_BINS) {
+      request->send(400, "application/json", "{\"error\":\"celula invalida\"}");
+      return;
+    }
+    ignMap.advance[doc["row"].as<int>()][doc["col"].as<int>()] = doc["value"].as<float>();
   }
   storage_saveIgnitionMap();
   request->send(200, "application/json", "{\"ok\":true}");
@@ -276,7 +301,7 @@ void webserver_init() {
   server.on("/api/logs/clear", HTTP_POST, handleClearLogs);
 
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    DynamicJsonDocument doc(512);
+    DynamicJsonDocument doc(2048);
     buildStatusJson(doc);
     String out;
     serializeJson(doc, out);
@@ -303,7 +328,7 @@ void webserver_task() {
   lastWsPush = now;
 
   if (ws.count() > 0) {
-    DynamicJsonDocument doc(512);
+    DynamicJsonDocument doc(2048);
     buildStatusJson(doc);
     String out;
     serializeJson(doc, out);

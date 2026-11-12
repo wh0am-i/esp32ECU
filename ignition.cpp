@@ -109,19 +109,15 @@ static void killAllOutputs() {
   coilBEnergized = false;
 }
 
-// Recalcula só o eixo de RPM do mapa (500rpm fixo até ignConfig.maxRpm),
-// SEM mexer na tabela de avanço já calibrada. Chamar sempre que maxRpm
-// mudar (boot com valor salvo, ou alteração via webapp) para o mapa nunca
-// ficar com colunas acima do corte de giro configurado.
+// Eixo inicial independente do limitador; preservar eixos salvos.
 void ignition_rebuildRpmAxis() {
-  float rpmMax = ignConfig.maxRpm > 500.0f ? ignConfig.maxRpm : 500.0f + 1.0f;
   for (int i = 0; i < IGN_MAP_RPM_BINS; i++) {
-    ignMap.rpmAxis[i] = 500.0f + i * ((rpmMax - 500.0f) / (IGN_MAP_RPM_BINS - 1));
+    ignMap.rpmAxis[i] = 500.0f + i * (6500.0f / (IGN_MAP_RPM_BINS - 1));
   }
 }
 
 void ignition_loadDefaults() {
-  // eixo de RPM: 500rpm (fixo) até o RPM máximo configurado (ignConfig.maxRpm)
+  // Eixo de fabrica: 500 a 7000 RPM, independente do limitador.
   ignition_rebuildRpmAxis();
   // eixo de TPS: 0 a 100%
   for (int j = 0; j < IGN_MAP_TPS_BINS; j++) {
@@ -131,7 +127,7 @@ void ignition_loadDefaults() {
   // mais avanço em carga baixa/RPM médio. AJUSTE ISSO NO BANCO/DINAMÔMETRO.
   for (int j = 0; j < IGN_MAP_TPS_BINS; j++) {
     for (int i = 0; i < IGN_MAP_RPM_BINS; i++) {
-      float base = 10.0f + (ignMap.rpmAxis[i] / ignConfig.maxRpm) * 20.0f;   // 10-30 graus
+      float base = 10.0f + (ignMap.rpmAxis[i] / 7000.0f) * 20.0f;   // 10-30 graus
       float loadCorrection = (100.0f - ignMap.tpsAxis[j]) / 100.0f * 8.0f; // até +8 graus em carga baixa
       ignMap.advance[j][i] = base + loadCorrection;
     }

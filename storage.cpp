@@ -1,4 +1,5 @@
 #include "storage.h"
+#include "map_resample.h"
 #include <Preferences.h>
 #include "ignition.h"
 #include "fueling.h"
@@ -21,16 +22,29 @@ void storage_init() {
 }
 
 void storage_loadAll() {
-  // --- mapa de ignição ---
-  prefs.begin(NS_MAP, true); // somente leitura
-  size_t expectedLen = sizeof(ignMap);
-  bool hasMap = prefs.isKey("map");
-  if (hasMap && prefs.getBytesLength("map") == expectedLen) {
-    prefs.getBytes("map", &ignMap, expectedLen);
+  // Preserva o mapa legado como backup; migra para uma chave de formato novo.
+  bool migrated = false;
+  prefs.begin(NS_MAP, true);
+  if (prefs.getBytesLength("map16") == sizeof(ignMap)) {
+    prefs.getBytes("map16", &ignMap, sizeof(ignMap));
+  } else if (prefs.getBytesLength("map") == sizeof(StoredMap<12,8>)) {
+    StoredMap<12,8> oldMap;
+    prefs.getBytes("map", &oldMap, sizeof(oldMap));
+    if (validStoredMap(oldMap)) {
+      resampleStoredMap(oldMap, ignMap, IGN_MAP_RPM_BINS, IGN_MAP_TPS_BINS);
+      migrated = true;
+    } else {
+      ignition_loadDefaults();
+      Serial.println("Mapa legado invalido; carregados valores de fabrica.");
+    }
   } else {
-    ignition_loadDefaults(); // primeira vez / versão mudou -> usa default seguro
+    ignition_loadDefaults();
   }
   prefs.end();
+  if (migrated) {
+    storage_saveIgnitionMap();
+    Serial.println("Mapa 12x8 reamostrado para 16x16. Revise a calibracao.");
+  }
 
   // --- config de ignição ---
   prefs.begin(NS_IGN, true);
@@ -41,11 +55,7 @@ void storage_loadAll() {
   ignConfig.ignitionEnabled = prefs.getBool("ignEnabled", true);
   prefs.end();
 
-  // o eixo de RPM do mapa (500rpm a maxRpm) depende do maxRpm que acabou de
-  // ser carregado acima - se o mapa em si já veio salvo da flash (hasMap),
-  // o eixo salvo nele pode estar desatualizado em relação a um maxRpm
-  // diferente salvo depois; refaz o eixo aqui (não mexe na tabela de avanço).
-  ignition_rebuildRpmAxis();
+  // O limitador nao altera eixos nem avancos persistidos.
 
   // --- config térmica / ventoinha ---
   prefs.begin(NS_THERMAL, true);
@@ -76,7 +86,7 @@ void storage_loadAll() {
 
 void storage_saveIgnitionMap() {
   prefs.begin(NS_MAP, false);
-  prefs.putBytes("map", &ignMap, sizeof(ignMap));
+  prefs.putBytes("map16", &ignMap, sizeof(ignMap));
   prefs.end();
 }
 

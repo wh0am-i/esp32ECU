@@ -1,81 +1,24 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ECU Chevette - Logs</title>
-<link rel="stylesheet" href="style.css">
-</head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ECU Chevette · Datalogger</title><link rel="stylesheet" href="style.css"></head>
 <body>
-<nav>
-  <a href="index.html">Monitoramento</a>
-  <a href="config.html">Configuração</a>
-  <a href="logs.html" class="active">Logs</a>
-</nav>
+<nav><a class="brand" href="index.html">ECU<span> / CHEVETTE</span></a><a href="index.html">Monitoramento</a><a href="config.html">Configuração</a><a href="logs.html" class="active">Datalogger</a><span id="connection-state" class="badge" role="status">Conectando…</span></nav>
 <main>
-  <h1>Histórico (log em RAM, ~2 minutos)</h1>
-
-  <div class="panel">
-    <canvas id="logCanvas" width="900" height="420"></canvas>
-    <div style="margin-top:10px;">
-      <button onclick="loadLogs()">Atualizar</button>
-      <button class="secondary" onclick="clearLogs()">Limpar log</button>
-      <button class="secondary" onclick="downloadCsv()">Baixar CSV</button>
-    </div>
-    <p class="map-hint">O log fica em RAM e é perdido ao desligar a ECU (não grava na flash pra não desgastá-la). Baixe o CSV se quiser guardar uma sessão.</p>
-  </div>
-</main>
-
-<script src="app.js"></script>
-<script>
-let lastCsv = '';
-
-function parseCsv(text) {
-  const lines = text.trim().split('\n');
-  lines.shift(); // header
-  const rpm = [], tps = [], adv = [], temp = [];
-  for (const line of lines) {
-    if (!line) continue;
-    const [t, r, tp, a, tm] = line.split(',');
-    rpm.push(parseFloat(r));
-    tps.push(parseFloat(tp));
-    adv.push(parseFloat(a));
-    temp.push(parseFloat(tm || '0'));
-  }
-  return { rpm, tps, adv, temp };
-}
-
-function loadLogs() {
-  fetch('/api/logs').then(r => r.text()).then(text => {
-    lastCsv = text;
-    const { rpm, tps, adv, temp } = parseCsv(text);
-    const canvas = document.getElementById('logCanvas');
-    drawLineChart(canvas, [
-      { label: 'RPM', data: rpm },
-      { label: 'TPS %', data: tps },
-      { label: 'Ponto °', data: adv },
-      { label: 'Temp °C', data: temp }
-    ], ['#ff7a1a', '#3ddc84', '#5fb8ff', '#ff5252']);
-  });
-}
-
-function clearLogs() {
-  postJSON('/api/logs/clear', {}).then(loadLogs);
-}
-
-function downloadCsv() {
-  if (!lastCsv) return;
-  const blob = new Blob([lastCsv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'log_ecu.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-loadLogs();
-setInterval(loadLogs, 3000); // auto-atualiza a cada 3s
-</script>
-</body>
-</html>
+<h1>Datalogger</h1><p class="subtitle">Explore os canais do motor em uma mesma linha do tempo.</p>
+<div class="panel">
+<div class="log-toolbar">
+<button id="pause-log">Pausar visualização</button><button class="secondary" id="refresh-log">Atualizar</button><button class="secondary" id="export-log">Exportar CSV</button>
+<label for="import-log" class="file-label">Abrir CSV <input id="import-log" type="file" accept=".csv"></label>
+<button class="secondary" id="clear-log">Limpar memória da ECU</button>
+</div>
+<p id="log-source" role="status">Ao vivo · buffer circular da ECU</p>
+<div class="log-summary"><span id="log-count">0 amostras</span><span id="log-duration">0 s</span><span id="log-rate">— Hz</span><span id="log-cursor">Cursor: —</span></div>
+<div id="channels" class="channel-grid"></div>
+<div class="chart-tools"><label for="time-window">Janela</label><select id="time-window"><option value="0">Sessão completa</option><option value="10">Últimos 10 s</option><option value="30">Últimos 30 s</option><option value="60">Últimos 60 s</option></select><button id="zoom-in">Zoom +</button><button id="zoom-out">Zoom −</button><button id="pan-left" class="secondary">◀ Anterior</button><button id="pan-right" class="secondary">Próximo ▶</button><button id="zoom-reset" class="secondary">Ver sessão inteira</button><label><input type="checkbox" id="auto-scale">Autoescala vertical</label><span id="zoom-info">1×</span></div>
+<p class="chart-instructions">Arraste no gráfico para ampliar um intervalo · roda do mouse = zoom · clique = cursor · use a visão geral para escolher outro trecho.</p>
+<div class="chart-frame"><canvas id="logCanvas" width="1440" height="720" aria-label="Canais separados com escalas e cursor de tempo"></canvas></div>
+<div class="overview-label">VISÃO GERAL DA SESSÃO / RPM <span>Arraste para selecionar o intervalo</span></div><canvas id="logOverview" width="1440" height="90" aria-label="Visão geral: selecione a janela de análise"></canvas>
+<label for="cursor-slider">Cursor de tempo — arraste para consultar os canais</label><input id="cursor-slider" type="range" min="0" max="0" value="0">
+<p class="map-hint">Cada canal tem sua própria escala vertical. O zoom pausa a visualização para manter o trecho estável. Pausar congela apenas a visualização: a ECU continua registrando a 20 Hz. O buffer guarda até 2.400 amostras (~120 s), perdidas ao desligar. Exporte para preservar a sessão.</p>
+</div>
+</main><script src="app.js"></script><script src="logs.js"></script><script src="technical.js"></script></body></html>

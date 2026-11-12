@@ -7,15 +7,15 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav>
+<nav><a class="brand" href="index.html">ECU<span> / CHEVETTE</span></a>
   <a href="index.html" class="active">Monitoramento</a>
   <a href="config.html">Configuração</a>
-  <a href="logs.html">Logs</a>
-</nav>
+  <a href="logs.html">Datalogger</a>
+<span id="connection-state" class="badge" role="status">Conectando…</span></nav>
 <main>
   <!-- Banner de Alerta Crítico de Superaquecimento -->
   <div id="overheat-banner" class="alert-banner" style="display:none;">
-    ⚠️ <b>ALERTA DE SUPERAQUECIMENTO:</b> Temperatura da água atingiu <span id="overheat-temp-val">--</span>°C! Ventoinha acionada.
+    ⚠️ <b>ALERTA DE SUPERAQUECIMENTO:</b> Temperatura da água atingiu <span id="overheat-temp-val">--</span>°C! Verifique o estado da ventoinha.
   </div>
 
   <!-- Banner de Corte de Giro Máximo -->
@@ -23,7 +23,7 @@
     ⚡ <b>CORTE DE GIRO MÁXIMO ATIVO:</b> Rotação atingiu o limite de segurança (<span id="revlimit-rpm-val">--</span> RPM).
   </div>
 
-  <h1>Monitoramento em tempo real</h1>
+  <h1>Painel do motor</h1><p class="subtitle">Alpha-N · Roda fônica 60-2 · Ignição wasted spark</p>
 
   <div class="gauges">
     <div class="gauge"><div class="value" id="v-rpm">--</div><div class="label">RPM</div></div>
@@ -67,7 +67,7 @@
   <div class="panel" style="margin-top:20px;">
     <h2>Conexão & Status</h2>
     <p style="color:var(--text-dim); font-size:13px;">
-      Conectado à rede <b id="ssid-hint">ECU-Chevette</b>. A ECU controla ignição, dosador e ventoinha de forma autônoma.
+      Na ESP32, acesse pela rede <b id="ssid-hint">ECU-Chevette</b>. A ECU controla ignição, dosador e ventoinha de forma autônoma.
     </p>
   </div>
 </main>
@@ -183,5 +183,5 @@ connectStatusSocket(function (d) {
   lastCoilBFireCount = d.coilBFireCount;
 });
 </script>
-</body>
+<script src="technical.js"></script></body>
 </html>

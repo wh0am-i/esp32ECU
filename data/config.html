@@ -7,19 +7,19 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav>
+<nav><a class="brand" href="index.html">ECU<span> / CHEVETTE</span></a>
   <a href="index.html">Monitoramento</a>
   <a href="config.html" class="active">Configuração</a>
-  <a href="logs.html">Logs</a>
-</nav>
+  <a href="logs.html">Datalogger</a>
+<span id="connection-state" class="badge" role="status">Conectando…</span></nav>
 <main>
-  <h1>Configuração & Calibração</h1>
+  <h1>Configuração & Calibração</h1><p class="subtitle">Ajuste por sistema. Revise os valores antes de gravar na ECU.</p><div id="config-tabs" class="section-tabs" role="tablist" aria-label="Sistemas"></div>
 
   <!-- ===================================================================== -->
   <!-- ÁREA DE TESTE MANUAL DE ATUADORES (OVERRIDE)                          -->
   <!-- ===================================================================== -->
   <h2>Área de Teste Manual de Atuadores</h2>
-  <div class="panel" style="border: 1px solid var(--accent); background: #161a22;">
+  <div class="panel" style="border: 1px solid var(--accent); background: #171719;">
     <p style="color:var(--text); font-size:13px; margin-top:0;">
       Use para testar o funcionamento físico da ventoinha do radiador e o curso do servo dosador de combustível.
     </p>
@@ -168,23 +168,23 @@
   <!-- ===================================================================== -->
   <!-- 3. MAPA DE IGNIÇÃO & GERADOR DE SUPERFÍCIE R³                        -->
   <!-- ===================================================================== -->
-  <h2>Mapa de Ignição Alpha-N (Avanço em ° BTDC)</h2>
+  <h2>Mapa de Ignição / 16 × 16 / ° BTDC</h2>
   <div class="panel">
-    <canvas id="mapCanvas" width="900" height="380"></canvas>
+    <div class="map-spec">256 PONTOS · INTERPOLAÇÃO BILINEAR · EIXOS INDEPENDENTES DO CORTE</div><p id="map-state" role="status">Mapa carregado da ECU</p><button class="secondary" onclick="discardMap()">Descartar edição do mapa</button><div class="map-selection-bar"><span id="selection-info">Clique para editar · arraste para selecionar uma região</span><button class="secondary" onclick="clearMapSelection()">Limpar seleção</button><button class="secondary" id="map-undo" onclick="undoMapEdit()" disabled>Desfazer</button></div><div class="map-scroll"><div id="mapGrid" tabindex="0" role="grid" aria-label="Mapa de ignição editável"></div></div>
     
     <div class="legend">
-      <span style="font-weight:600; color:var(--text);">Gradiente Térmico Calibrado:</span>
-      <span><i style="background:rgb(30,60,200)"></i> Baixo (frio)</span>
-      <span><i style="background:rgb(0,180,210)"></i></span>
-      <span><i style="background:rgb(40,200,80)"></i></span>
-      <span><i style="background:rgb(240,210,30)"></i></span>
-      <span><i style="background:rgb(230,60,30)"></i> Alto (quente)</span>
-      <span style="margin-left:auto; color:var(--text-dim);">Clique em qualquer célula para editar manualmente.</span>
+      <span style="font-weight:600; color:var(--text);">ESCALA DE AVANÇO:</span>
+      <span><i style="background:rgb(36,37,40)"></i> 5°</span>
+      <span><i style="background:rgb(80,39,44)"></i></span>
+      <span><i style="background:rgb(143,36,45)"></i></span>
+      <span><i style="background:rgb(218,45,53)"></i></span>
+      <span><i style="background:rgb(255,218,220)"></i> 45°</span>
+      <span style="margin-left:auto; color:var(--text-dim);">Enter aplica à seleção · Esc cancela a entrada.</span>
     </div>
 
     <!-- Barra de Ferramentas e Ajuste em Lote -->
     <div class="map-toolbar">
-      <span style="font-size:13px; color:var(--text-dim); font-weight:600;">Ajuste em Lote:</span>
+      <span style="font-size:13px; color:var(--text-dim); font-weight:600;">Ajuste na seleção (sem seleção: mapa inteiro):</span>
       <div class="btn-group">
         <button type="button" onclick="applyTableDelta(1.0)">+1.0°</button>
         <button type="button" onclick="applyTableDelta(-1.0)">-1.0°</button>
@@ -249,34 +249,24 @@
 </main>
 
 <script src="app.js"></script>
+<script src="map-editor.js"></script>
 <script>
+let mapDirty = false;
+function markMapDirty() { mapDirty = true; document.getElementById('map-state').textContent = 'Alterações no mapa ainda não gravadas'; }
+function discardMap() { if (!mapDirty || confirm('Descartar alterações locais do mapa?')) { mapDirty = false; loadMap(); document.getElementById('map-state').textContent = 'Mapa carregado da ECU'; } }
+window.addEventListener('beforeunload', e => { if (mapDirty) { e.preventDefault(); e.returnValue = ''; } });
 let mapData = null;
 let liveTpsRaw = 0;
 
 function loadMap() {
   fetchJSON('/api/map').then(d => {
     mapData = d;
+    resetMapEditor();
     renderMap();
   });
 }
 
-function renderMap() {
-  if (!mapData) return;
-  const canvas = document.getElementById('mapCanvas');
-  drawHeatmap(canvas, mapData.rpmAxis, mapData.tpsAxis, mapData.table, {
-    minVal: 5.0,
-    maxVal: 45.0,
-    onCellClick: (row, col, current) => {
-      const val = prompt(`Avanço para TPS ${mapData.tpsAxis[row].toFixed(0)}% / RPM ${mapData.rpmAxis[col].toFixed(0)}:`, current.toFixed(1));
-      if (val === null) return;
-      const num = parseFloat(val.replace(',', '.'));
-      if (isNaN(num)) return;
-      mapData.table[row][col] = num;
-      renderMap();
-      postJSON('/api/map', { row, col, value: num });
-    }
-  });
-}
+function renderMap() { if (mapData) renderMapGrid(); }
 
 function updateTriggerTotal() {
   const teeth = parseInt(document.getElementById('triggerTeethOffset').value) || 0;
@@ -295,20 +285,24 @@ function captureTpsMax() {
 
 function applyTableDelta(delta) {
   if (!mapData) return;
-  mapData.table = modifyTableDelta(mapData.table, delta);
+  transformMapSelection(value => Math.round((value + delta)*10)/10);
   renderMap();
+  markMapDirty();
 }
 
 function applyTableFactor(factor) {
   if (!mapData) return;
-  mapData.table = modifyTableFactor(mapData.table, factor);
+  transformMapSelection(value => Math.round(value * factor*10)/10);
   renderMap();
+  markMapDirty();
 }
 
 function applyTableSmooth() {
   if (!mapData) return;
-  mapData.table = smoothTable(mapData.table);
+  const smoothed = smoothTable(mapData.table);
+  transformMapSelection((value,r,c) => smoothed[r][c]);
   renderMap();
+  markMapDirty();
 }
 
 function generateAndApplyR3() {
@@ -319,13 +313,17 @@ function generateAndApplyR3() {
     rpmGamma: parseFloat(document.getElementById('r3_gamma').value) || 1.0,
     tpsRetard: parseFloat(document.getElementById('r3_tpsRetard').value) || 8.0
   };
+  rememberMapEdit();
   mapData.table = generateR3Surface(mapData.rpmAxis, mapData.tpsAxis, params);
   renderMap();
+  markMapDirty();
 }
 
 function saveMapToServer() {
   if (!mapData) return;
-  postJSON('/api/map', { table: mapData.table }).then(() => {
+  const snapshot = JSON.stringify(mapData.table);
+  postJSON('/api/map', { table: JSON.parse(snapshot) }).then(() => {
+    if (snapshot === JSON.stringify(mapData.table)) { mapDirty = false; document.getElementById('map-state').textContent = 'Mapa gravado na ECU'; }
     flashSaved('saved-map');
   });
 }
@@ -425,9 +423,8 @@ function saveIgnitionConfig() {
     ignitionEnabled: document.getElementById('ignitionEnabled').checked
   }).then(() => {
     flashSaved('saved-ign');
-    // maxRpm pode ter mudado o eixo de RPM do mapa no backend (ignition_rebuildRpmAxis) -
-    // sem isso, o mapCanvas ficava mostrando o eixo antigo em memória até dar F5.
-    loadMap();
+    // Atualiza apenas a leitura; o corte nao desloca os eixos.
+    fetchJSON('/api/map').then(d => { if (!mapDirty) mapData = d; else mapData.rpmAxis = d.rpmAxis; renderMap(); });
   });
 }
 
@@ -446,5 +443,6 @@ connectStatusSocket(function (d) {
   document.getElementById('testServoAngleLive').textContent = d.servoAngle + '°' + (d.servoOverride !== -1 ? ' [MODO TESTE FORÇADO]' : ' [AUTOMÁTICO]');
 });
 </script>
-</body>
+<script src="config-ui.js"></script>
+<script src="technical.js"></script></body>
 </html>

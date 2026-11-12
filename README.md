@@ -1,5 +1,11 @@
 # ECU ESP32 - Chevette (Roda Fônica 60-2 + Bobina EA111 + Alpha-N)
 
+## Validar a interface no Windows
+
+Execute `python simulator.py --open` e acesse **http://127.0.0.1:8080**.
+O simulador não exige dependências externas e usa os mesmos arquivos da interface
+da ESP32, com telemetria sintética. Veja [instruções e testes](VALIDACAO_WINDOWS.md).
+
 ⚠️ **Projeto experimental.** Leia toda a documentação antes de conectar ao motor. Erros na calibração do ponto de ignição podem causar detonação e danos mecânicos graves. Realize sempre os primeiros testes em bancada.
 
 ---
@@ -23,7 +29,7 @@
 ## 2. Recursos e Funcionalidades Implementadas
 
 ### A. Ignição Alpha-N e Agendamento em Hardware (`esp_timer_isr`)
-* **Mapa 2D ($12 \times 8$):** Avanço em graus BTDC interpolado continuamente em tempo real a partir de RPM e TPS%.
+* **Mapa 2D ($16 \times 16$):** Avanço em graus BTDC interpolado continuamente em tempo real a partir de RPM e TPS%.
 * **Disparo Determinístico:** 4 temporizadores de hardware em modo ISR dedicados exclusivamente para o início do Dwell e disparo de cada par de cilindros (wasted spark), garantindo precisão de microssegundos sem sobrecarregar a CPU.
 * **Corte de Giro Final (Hard Cut):** Limitador de rotação máxima configurável (`maxRpm`) para proteção do motor.
 * **Corte 2-Step (Largada):** Ativado por botão no volante/painel com rotação de corte ajustável (`twoStepRpm`) e telemetria de botão no WebApp.

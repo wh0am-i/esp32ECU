@@ -5,15 +5,35 @@
 // ============================================================================
 
 function fetchJSON(url) {
-  return fetch(url).then(r => r.json());
+  return fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(5000) }).then(checkResponse);
 }
 
+async function checkResponse(response) {
+  const data = await response.json();
+  if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+
+function notify(message, error = false) {
+  let el = document.getElementById('notification');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'notification';
+    el.setAttribute('role', 'status'); document.body.append(el);
+  }
+  el.textContent = message; el.className = error ? 'notification error' : 'notification';
+  el.hidden = false; clearTimeout(el.timer); el.timer = setTimeout(() => el.hidden = true, 6000);
+}
+window.addEventListener('unhandledrejection', e => { e.preventDefault(); notify(e.reason?.message || 'Falha de comunicação', true); });
+
 function postJSON(url, data) {
+  if (Object.values(data).some(v => typeof v === 'number' && !Number.isFinite(v))) {
+    return Promise.reject(new Error('Preencha todos os campos com números válidos.'));
+  }
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(r => r.json());
+    body: JSON.stringify(data), signal: AbortSignal.timeout(5000)
+  }).then(checkResponse);
 }
 
 function flashSaved(elId) {
@@ -27,18 +47,43 @@ function flashSaved(elId) {
 // WebSocket de telemetria em tempo real, com reconexão automática
 // ----------------------------------------------------------------------------
 function connectStatusSocket(onMessage) {
-  let ws;
+  let ws, last = 0;
+  const badge = document.getElementById('connection-state');
+  function receive(d) {
+    last = Date.now();
+    if (badge) { badge.textContent = d.simulator ? 'SIMULADOR · online' : 'ECU · online'; badge.className = 'badge ok'; }
+    document.body.classList.remove('telemetry-stale');
+    if (d.simulator && !document.getElementById('sim-controls')) {
+      const panel = document.createElement('div'); panel.id = 'sim-controls'; panel.className = 'sim-controls';
+      panel.innerHTML = '<b>Validação Windows</b><span>Dados sintéticos</span><label for="scenario">Cenário</label><select id="scenario"><option value="sweep">Aceleração</option><option value="idle">Marcha lenta</option><option value="stopped">Motor parado</option><option value="overheat">Superaquecimento</option><option value="limit">Limitador</option><option value="two-step">2-step</option></select>';
+      document.querySelector('main').prepend(panel);
+      panel.querySelector('select').value = d.scenario;
+      panel.querySelector('select').onchange = e => postJSON('/api/simulator', {scenario:e.target.value});
+    }
+    window.dispatchEvent(new CustomEvent("ecu-status", {detail:d}));
+    onMessage(d);
+  }
+  setInterval(() => {
+    if (Date.now()-last > 3000) {
+      if (badge) { badge.textContent = 'Sem telemetria · dados desatualizados'; badge.className = 'badge danger'; }
+      document.body.classList.add('telemetry-stale');
+    }
+  }, 1000);
+  async function poll() {
+    try { receive(await fetchJSON('/api/status')); } catch (_) { /* indicador de conexão */ }
+    setTimeout(poll, 100);
+  }
   function connect() {
-    ws = new WebSocket('ws://' + location.host + '/ws');
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
     ws.onmessage = (evt) => {
       try {
-        onMessage(JSON.parse(evt.data));
+        receive(JSON.parse(evt.data));
       } catch (e) { /* ignora frame malformado */ }
     };
     ws.onclose = () => setTimeout(connect, 1000);
     ws.onerror = () => ws.close();
   }
-  connect();
+  fetchJSON('/api/status').then(d => { receive(d); d.simulator ? poll() : connect(); }).catch(() => connect());
 }
 
 // ----------------------------------------------------------------------------
@@ -49,13 +94,9 @@ function connectStatusSocket(onMessage) {
 function advanceToColor(v, vMin, vMax) {
   if (vMax <= vMin) vMax = vMin + 1;
   const t = Math.max(0, Math.min(1, (v - vMin) / (vMax - vMin)));
-  // Gradiente térmico: Azul escuro -> Ciano -> Verde -> Amarelo -> Laranja -> Vermelho
+  // Escala sequencial de avanco: grafite, vermelho, branco.
   const stops = [
-    [30, 60, 200],   // 0.0: Azul frio (baixo avanço)
-    [0, 180, 210],   // 0.25: Ciano
-    [40, 200, 80],   // 0.5: Verde
-    [240, 210, 30],  // 0.75: Amarelo
-    [230, 60, 30]    // 1.0: Vermelho quente (alto avanço)
+    [36, 37, 40], [80, 39, 44], [143, 36, 45], [218, 45, 53], [255, 218, 220]
   ];
   const scaled = t * (stops.length - 1);
   const i = Math.min(stops.length - 2, Math.floor(scaled));
@@ -103,6 +144,10 @@ function drawHeatmap(canvas, rpmAxis, tpsAxis, table, opts) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(val.toFixed(1), x + cellW / 2, y + cellH / 2);
+      if (opts.selectedCell?.row === rowIdxDraw && opts.selectedCell?.col === c) {
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.strokeRect(x + 2, y + 2, cellW - 5, cellH - 5);
+      }
     }
   }
 

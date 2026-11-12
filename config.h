@@ -84,8 +84,8 @@
 // ---------------------------------------------------------------------------
 // MAPA DE IGNIÇÃO - dimensões da tabela (estilo profissional RPM x TPS)
 // ---------------------------------------------------------------------------
-#define IGN_MAP_RPM_BINS      12
-#define IGN_MAP_TPS_BINS      8
+#define IGN_MAP_RPM_BINS      16
+#define IGN_MAP_TPS_BINS      16
 
 // ---------------------------------------------------------------------------
 // REDE WIFI (Access Point criado pela própria ESP32)
